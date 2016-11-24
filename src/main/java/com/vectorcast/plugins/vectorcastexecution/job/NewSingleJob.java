@@ -86,7 +86,7 @@ getEnvironmentTeardownWin() + "\n";
 "%VECTORCAST_DIR%\\manage --project \"@PROJECT@\" --full-status > \"@PROJECT_BASE@_full_report.txt\"\n" +
 "%VECTORCAST_DIR%\\vpython \"%WORKSPACE%\\vc_scripts\\getTotals.py\" --api 2 \"@PROJECT_BASE@_full_report.txt\"";
         }
-        win = StringUtils.replace(win, "@PROJECT@", getManageProjectName());
+        win = StringUtils.replace(win, "@PROJECT@", getManageProjectNameRaw());
         win = StringUtils.replace(win, "@PROJECT_BASE@", getBaseName());
         
         String unix = 
@@ -108,7 +108,7 @@ getEnvironmentTeardownUnix() + "\n";
 "$VECTORCAST_DIR/manage --project \"@PROJECT@\" --full-status > \"@PROJECT_BASE@_full_report.txt\"\n" +
 "$VECTORCAST_DIR/vpython \"$WORKSPACE/vc_scripts/getTotals.py\" --api 2 \"@PROJECT_BASE@_full_report.txt\"";
         }
-        unix = StringUtils.replace(unix, "@PROJECT@", getManageProjectName());
+        unix = StringUtils.replace(unix, "@PROJECT@", getManageProjectNameRaw());
         unix = StringUtils.replace(unix, "@PROJECT_BASE@", getBaseName());
         
         VectorCASTCommand command = new VectorCASTCommand(win, unix);
@@ -199,7 +199,7 @@ setBuildStatus +
 "    manager.addBadge(" + gif + ", \"General Error\")\n" +
 "}";
         script = StringUtils.replace(script, "@PROJECT_BASE@", getBaseName());
-        script = StringUtils.replace(script, "@PROJECT@", getManageProjectName());
+        script = StringUtils.replace(script, "@PROJECT@", getManageProjectNameRaw());
         
         SecureGroovyScript secureScript = new SecureGroovyScript(script, /*sandbox*/false, /*classpath*/null);
         GroovyPostbuildRecorder groovy = new GroovyPostbuildRecorder(secureScript, /*behaviour*/2, /*matrix parent*/false);
@@ -232,7 +232,7 @@ setBuildStatus +
      */
     @Override
     public void doCreate(boolean update) throws IOException, ServletException, Descriptor.FormException {
-        getTopProject().setDescription("Single job to run the manage project: " + getManageProjectName());
+        getTopProject().setDescription("Single job to run the manage project: " + getManageProjectNameRaw());
 
         // Build actions...
         addSetup(getTopProject());

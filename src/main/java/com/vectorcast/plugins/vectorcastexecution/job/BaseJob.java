@@ -80,6 +80,10 @@ abstract public class BaseJob {
     private String option_error_level;
     /** Generate execution report */
     private boolean option_execution_report;
+    /** Base shared directory for windows */
+    private String baseSharedWin;
+    /** Base shared directory for unix */
+    private String baseSharedUnix;
     /**
      * Constructor
      * @param request
@@ -95,7 +99,14 @@ abstract public class BaseJob {
         JSONObject json = request.getSubmittedForm();
         
         manageProjectName = json.optString("manageProjectName");
+        if (!manageProjectName.isEmpty()) {
+            // Force unix style path to avoid problems later
+            manageProjectName = manageProjectName.replace('\\','/');
+        }
         baseName = FilenameUtils.getBaseName(manageProjectName);
+        
+        baseSharedWin = json.optString("winSharedDir");
+        baseSharedUnix = json.optString("unixSharedDir");
         
         environmentSetupWin = json.optString("environment_setup_win");
         executePreambleWin = json.optString("execute_preamble_win");
@@ -173,6 +184,20 @@ abstract public class BaseJob {
         return option_execution_report;
     }
     /**
+     * Get base shared directory for windows
+     * @return shared directory
+     */
+    protected String getBaseSharedWin() {
+        return baseSharedWin;
+    }
+    /**
+     * Get base shared directory for unix
+     * @return shared directory
+     */
+    protected String getBaseSharedUnix() {
+        return baseSharedUnix;
+    }
+    /**
      * Get top-level project
      * @return project
      */
@@ -180,11 +205,35 @@ abstract public class BaseJob {
         return topProject;
     }
     /**
-     * Get manage project name
+     * Get the manage project name as entered.
+     * @return  manage project name
+     */
+    protected String getManageProjectNameRaw() {
+        return manageProjectName;
+    }
+    /**
+     * Get manage project name for windows. This is a path that is updated
+     * with the shared windows base path if required.
      * @return manage project name
      */
-    protected String getManageProjectName() {
-        return manageProjectName;
+    protected String getManageProjectNameWin() {
+        if (baseSharedWin.isEmpty()) {
+            return manageProjectName;
+        } else {
+            return baseSharedWin + "/work/" + manageProjectName;
+        }
+    }
+    /**
+     * Get manage project name for unix. This is a path that is updated
+     * with the shared unix base path if required.
+     * @return manage project name
+     */
+    protected String getManageProjectNameUnix() {
+        if (baseSharedUnix.isEmpty()) {
+            return manageProjectName;
+        } else {
+            return baseSharedUnix + "/work/" + manageProjectName;
+        }
     }
     /**
      * Get base name of manage project

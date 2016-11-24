@@ -45,6 +45,7 @@ import java.util.logging.Logger;
 import javax.servlet.ServletException;
 import org.apache.commons.fileupload.FileItem;
 import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang.SystemUtils;
 import org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.SecureGroovyScript;
 import org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder;
 import org.kohsuke.stapler.StaplerRequest;
@@ -148,16 +149,25 @@ public class NewMultiJob extends BaseJob {
         manageProject = new ManageProject(manageFile);
         manageProject.parse();
 
-        getTopProject().setDescription("Top-level multi job to run the manage project: " + getManageProjectName());
+        getTopProject().setDescription("Top-level multi job to run the manage project: " + getManageProjectNameRaw());
         Label label = new LabelAtom("master");
         getTopProject().setAssignedLabel(label);
-        
+        if (SystemUtils.IS_OS_WINDOWS) {
+            if (!getBaseSharedWin().isEmpty()) {
+                getTopProject().setCustomWorkspace(getWindowsWorkspace());
+            }
+        } else {
+            if (!getBaseSharedUnix().isEmpty()) {
+                getTopProject().setCustomWorkspace(getUnixWorkspace());
+            }
+        }
+
         // Build actions...
         addSetup(getTopProject());
         // Add multi-job phases
         // Building...
         List<PhaseJobsConfig> phaseJobs = new ArrayList<>();
-        
+
         projectsAdded = new ArrayList<>();
         projectsNeeded = new ArrayList<>();
         projectsExisting = new ArrayList<>();
@@ -215,7 +225,7 @@ public class NewMultiJob extends BaseJob {
             String name = getBaseName() + "_" + detail.getProjectName() + "_BuildExecute";
             CopyArtifact copyArtifact = new CopyArtifact(name);
             copyArtifact.setOptional(true);
-            copyArtifact.setFilter("**/*manage_incremental_rebuild_report.html, *.vcr, *.cvr");
+            copyArtifact.setFilter("**/*manage_incremental_rebuild_report.html");
             copyArtifact.setFingerprintArtifacts(false);
             BuildSelector bs = new WorkspaceSelector();
             copyArtifact.setSelector(bs);
@@ -257,12 +267,6 @@ public class NewMultiJob extends BaseJob {
      */
     private void addMultiJobBuildCommand() {
         String win = "";
-        for (MultiJobDetail detail : manageProject.getJobs()) {
-            String name = getBaseName() + "_" + detail.getProjectName();
-            win +=
-"%VECTORCAST_DIR%\\manage --project \"@PROJECT@\" --import-result " + name + ".vcr\n" +
-"%VECTORCAST_DIR%\\manage --project \"@PROJECT@\" --level " + detail.getLevel() + " -e " + detail.getEnvironment() + " --clicast-args TOols Import_coverage %WORKSPACE%\\" + name + ".cvr\n";
-        }
         win +=
 "%VECTORCAST_DIR%\\vpython %WORKSPACE%\\vc_scripts\\incremental_build_report_aggregator.py --api 2 \n" +
 "%VECTORCAST_DIR%\\manage --project \"@PROJECT@\" --create-report=aggregate  \n" +
@@ -272,16 +276,10 @@ public class NewMultiJob extends BaseJob {
 "%VECTORCAST_DIR%\\manage --project \"@PROJECT@\" --full-status > @PROJECT_BASE@_full_report.txt\n" +
 "%VECTORCAST_DIR%\\vpython %WORKSPACE%\\vc_scripts\\getTotals.py --api 2 @PROJECT_BASE@_full_report.txt\n" +
 "           ";
-        win = StringUtils.replace(win, "@PROJECT@", getManageProjectName());
+        win = StringUtils.replace(win, "@PROJECT@", getManageProjectNameWin());
         win = StringUtils.replace(win, "@PROJECT_BASE@", getBaseName());
 
         String unix = "";
-        for (MultiJobDetail detail : manageProject.getJobs()) {
-            String name = getBaseName() + "_" + detail.getProjectName();
-            unix +=
-"$VECTORCAST_DIR/manage --project \"@PROJECT@\" --import-result " + name + ".vcr\n" +
-"$VECTORCAST_DIR/manage --project \"@PROJECT@\" --level " + detail.getLevel() + " -e " + detail.getEnvironment() + " --clicast-args TOols Import_coverage $WORKSPACE/" + name + ".cvr\n";
-        }
         unix +=
 "$VECTORCAST_DIR/vpython $WORKSPACE/vc_scripts/incremental_build_report_aggregator.py --api 2 \n" +
 "$VECTORCAST_DIR/manage --project \"@PROJECT@\" --create-report=aggregate  \n" +
@@ -292,7 +290,7 @@ public class NewMultiJob extends BaseJob {
 "$VECTORCAST_DIR/vpython $WORKSPACE/vc_scripts/getTotals.py --api 2 @PROJECT_BASE@_full_report.txt\n" +
 "\n" +
 "          ";
-        unix = StringUtils.replace(unix, "@PROJECT@", getManageProjectName());
+        unix = StringUtils.replace(unix, "@PROJECT@", getManageProjectNameUnix());
         unix = StringUtils.replace(unix, "@PROJECT_BASE@", getBaseName());
         
         VectorCASTCommand command = new VectorCASTCommand(win, unix);
@@ -342,8 +340,8 @@ public class NewMultiJob extends BaseJob {
             if (p == null) {
                 return;
             }
-            SCM scm = getTopProject().getScm();
-            p.setScm(scm);
+//            SCM scm = getTopProject().getScm();
+//            p.setScm(scm);
             addDeleteWorkspaceBeforeBuildStarts(p);
             Label label = new LabelAtom(detail.getCompiler());
             p.setAssignedLabel(label);
@@ -361,7 +359,7 @@ public class NewMultiJob extends BaseJob {
             if (!getInstance().getJobNames().contains(projectName)) {
                 projectsAdded.add(projectName);
                 FreeStyleProject p = getInstance().createProject(FreeStyleProject.class, projectName);
-                p.setScm(getTopProject().getScm());
+//                p.setScm(getTopProject().getScm());
                 addDeleteWorkspaceBeforeBuildStarts(p);
                 Label label = new LabelAtom(detail.getCompiler());
                 p.setAssignedLabel(label);
@@ -455,17 +453,19 @@ public class NewMultiJob extends BaseJob {
             noGenExecReport = " --dont-gen-exec-rpt";
         }
         
-        String win = "%VECTORCAST_DIR%\\vpython %WORKSPACE%\\vc_scripts\\generate-results.py --api 2 \"@PROJECT@\" --level @LEVEL@ -e @ENV@ " + noGenExecReport + "\n" +
+        String win = "%VECTORCAST_DIR%\\vpython @WORKSPACE@\\vc_scripts\\generate-results.py --api 2 \"@PROJECT@\" --level @LEVEL@ -e @ENV@ " + noGenExecReport + "\n" +
 "      ";
-        win = StringUtils.replace(win, "@PROJECT@", getManageProjectName());
+        win = StringUtils.replace(win, "@PROJECT@", getManageProjectNameWin());
         win = StringUtils.replace(win, "@LEVEL@", detail.getLevel());
         win = StringUtils.replace(win, "@ENV@", detail.getEnvironment());
+        win = StringUtils.replace(win, "@WORKSPACE@", getWindowsWorkspace());
         
-        String unix = "$VECTORCAST_DIR/vpython $WORKSPACE/vc_scripts/generate-results.py --api 2 \"@PROJECT@\" --level @LEVEL@ -e @ENV@ " + noGenExecReport + "\n" +
+        String unix = "$VECTORCAST_DIR/vpython @WORKSPACE@/vc_scripts/generate-results.py --api 2 \"@PROJECT@\" --level @LEVEL@ -e @ENV@ " + noGenExecReport + "\n" +
 "      ";
-        unix = StringUtils.replace(unix, "@PROJECT@", getManageProjectName());
+        unix = StringUtils.replace(unix, "@PROJECT@", getManageProjectNameUnix());
         unix = StringUtils.replace(unix, "@LEVEL@", detail.getLevel());
         unix = StringUtils.replace(unix, "@ENV@", detail.getEnvironment());
+        unix = StringUtils.replace(unix, "@WORKSPACE@", getUnixWorkspace());
 
         VectorCASTCommand command = new VectorCASTCommand(win, unix);
         project.getBuildersList().add(command);
@@ -482,28 +482,30 @@ public class NewMultiJob extends BaseJob {
 getEnvironmentSetupWin() + "\n" +
 getExecutePreambleWin() +
 " %VECTORCAST_DIR%\\manage --project \"@PROJECT@\" --level @LEVEL@ -e @ENV@ --build-execute --incremental --output @BASENAME@_manage_incremental_rebuild_report.html\n" +
-"%VECTORCAST_DIR%\\manage --project \"@PROJECT@\" --level @LEVEL@ -e @ENV@ --export-result @BASENAME@.vcr\n" +
-"%VECTORCAST_DIR%\\manage --project \"@PROJECT@\" --level @LEVEL@ -e @ENV@ --clicast-args TOols EXPORT_Results_coverage %WORKSPACE%\\@BASENAME@.cvr\n" +
+//"%VECTORCAST_DIR%\\manage --project \"@PROJECT@\" --level @LEVEL@ -e @ENV@ --export-result @BASENAME@.vcr\n" +
+//"%VECTORCAST_DIR%\\manage --project \"@PROJECT@\" --level @LEVEL@ -e @ENV@ --clicast-args TOols EXPORT_Results_coverage @WORKSPACE@\\@BASENAME@.cvr\n" +
 getEnvironmentTeardownWin() + "\n" +
 "\n";
-        win = StringUtils.replace(win, "@PROJECT@", getManageProjectName());
+        win = StringUtils.replace(win, "@PROJECT@", getManageProjectNameWin());
         win = StringUtils.replace(win, "@LEVEL@", detail.getLevel());
         win = StringUtils.replace(win, "@ENV@", detail.getEnvironment());
         win = StringUtils.replace(win, "@BASENAME@", baseName);
+        win = StringUtils.replace(win, "@WORKSPACE@", getWindowsWorkspace());
         
         String unix = 
 "export VCAST_RPTS_PRETTY_PRINT_HTML=FALSE\n" +
 getEnvironmentSetupUnix() + "\n" +
 getExecutePreambleUnix() +
 " $VECTORCAST_DIR/manage --project \"@PROJECT@\" --level @LEVEL@ -e @ENV@ --build-execute --incremental --output @BASENAME@_manage_incremental_rebuild_report.html\n" +
-"$VECTORCAST_DIR/manage --project \"@PROJECT@\" --level @LEVEL@ -e @ENV@ --export-result @BASENAME@.vcr\n" +
-"$VECTORCAST_DIR/manage --project \"@PROJECT@\" --level @LEVEL@ -e @ENV@ --clicast-args TOols EXPORT_Results_coverage $WORKSPACE/@BASENAME@.cvr\n" +
+//"$VECTORCAST_DIR/manage --project \"@PROJECT@\" --level @LEVEL@ -e @ENV@ --export-result @BASENAME@.vcr\n" +
+//"$VECTORCAST_DIR/manage --project \"@PROJECT@\" --level @LEVEL@ -e @ENV@ --clicast-args TOols EXPORT_Results_coverage @WORKSPACE@/@BASENAME@.cvr\n" +
 getEnvironmentTeardownUnix() + "\n" +
 "\n";
-        unix = StringUtils.replace(unix, "@PROJECT@", getManageProjectName());
+        unix = StringUtils.replace(unix, "@PROJECT@", getManageProjectNameUnix());
         unix = StringUtils.replace(unix, "@LEVEL@", detail.getLevel());
         unix = StringUtils.replace(unix, "@ENV@", detail.getEnvironment());
         unix = StringUtils.replace(unix, "@BASENAME@", baseName);
+        unix = StringUtils.replace(unix, "@WORKSPACE@", getUnixWorkspace());
 
         VectorCASTCommand command = new VectorCASTCommand(win, unix);
         project.getBuildersList().add(command);
@@ -594,5 +596,27 @@ setBuildStatus +
         SecureGroovyScript secureScript = new SecureGroovyScript(script, /*sandbox*/false, /*classpath*/null);
         GroovyPostbuildRecorder groovy = new GroovyPostbuildRecorder(secureScript, /*behaviour*/2, /*matrix parent*/false);
         project.getPublishersList().add(groovy);
+    }
+    /**
+     * Get the windows workspace if defined, otherwise the default
+     * @return workspace
+     */
+    private String getWindowsWorkspace() {
+        if (getBaseSharedWin().isEmpty()) {
+            return "%WORKSPACE%";
+        } else {
+            return getBaseSharedWin() + "\\work";
+        }
+    }
+    /**
+     * Get the unix workspace if defined, otherwise the default
+     * @return workspace
+     */
+    private String getUnixWorkspace() {
+        if (getBaseSharedUnix().isEmpty()) {
+            return "$WORKSPACE";
+        } else {
+            return getBaseSharedUnix() + "/work";
+        }
     }
 }
