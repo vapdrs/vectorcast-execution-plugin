@@ -51,8 +51,13 @@ verbose = False
 
 # Versions of VectorCAST prior to 2019 relied on the environment variable VECTORCAST_DIR.
 # We will use that variable as a fall back if the VectorCAST executables aren't on the system path.
-has_exe = lambda p, x : os.access(os.path.join(p, x), os.X_OK)
-has_vcast_exe = lambda p : has_exe(p, 'manage') or has_exe(p, 'manage.exe')
+def has_exe(p, x):
+    return os.access(os.path.join(p, x), os.X_OK)
+
+ def has_vcast_exe(p):
+    return (has_exe(p, 'manage') or has_exe(p, 'manage.exe')) and
+            os.path.isfile(os.path.join(p, "DATA", "tool_version.txt"))
+
 vcast_dirs = (path for path in os.environ["PATH"].split(os.pathsep) if has_vcast_exe(path))
 vectorcast_install_dir = next(vcast_dirs, os.environ.get("VECTORCAST_DIR", ""))
 
